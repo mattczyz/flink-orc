@@ -1,6 +1,7 @@
 package uk.co.realb.flink.orc
 
 import java.nio.file.Paths
+import java.util.Properties
 
 import org.apache.flink.core.fs.Path
 import org.apache.flink.core.io.SimpleVersionedSerializer
@@ -33,29 +34,12 @@ import scala.util.hashing.MurmurHash3
 class OrcStreamingFileSinkSpec extends FlatSpec with Matchers {
   private val schemaString = """struct<x:int,y:string,z:string>"""
 
-  private val conf = new Configuration
-  conf.set("orc.compress", "SNAPPY")
-  conf.set("orc.bloom.filter.columns", "x")
+  private val conf = new Properties
+  conf.setProperty("orc.compress", "SNAPPY")
+  conf.setProperty("orc.bloom.filter.columns", "x")
 
   private val schema = TypeDescription.fromString(schemaString)
-  private val encoder = new OrcRowEncoder[(Int, String, String)]() {
-    override def encodeAndAdd(
-        datum: (Int, String, String),
-        batch: VectorizedRowBatch
-    ): Unit = {
-      val row = nextIndex(batch)
-      batch.cols(0).asInstanceOf[LongColumnVector].vector(row) = datum._1
-      batch
-        .cols(1)
-        .asInstanceOf[BytesColumnVector]
-        .setVal(row, datum._2.getBytes)
-      batch
-        .cols(2)
-        .asInstanceOf[BytesColumnVector]
-        .setVal(row, datum._3.getBytes)
-      incrementBatchSize(batch)
-    }
-  }
+  private val encoder = new TestEncoder()
 
   private val bucketAssigner =
     new BucketAssigner[(Int, String, String), String] {
@@ -176,17 +160,26 @@ class OrcStreamingFileSinkSpec extends FlatSpec with Matchers {
 
     reader(
       TestUtils
-        .createReader(conf, testFile(Seq("testText0", "part-0-0")))
+        .createReader(
+          new Configuration(),
+          testFile(Seq("testText0", "part-0-0"))
+        )
         .rows()
     )
     reader(
       TestUtils
-        .createReader(conf, testFile(Seq("testText1", "part-0-1")))
+        .createReader(
+          new Configuration(),
+          testFile(Seq("testText1", "part-0-1"))
+        )
         .rows()
     )
     reader(
       TestUtils
-        .createReader(conf, testFile(Seq("testText2", "part-0-2")))
+        .createReader(
+          new Configuration(),
+          testFile(Seq("testText2", "part-0-2"))
+        )
         .rows()
     )
     result.sortBy(_._1) should be(testData)

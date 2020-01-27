@@ -2,6 +2,7 @@ package uk.co.realb.flink.orc
 
 import java.io.File
 import java.nio.file.{Files, Paths}
+import java.util.Properties
 
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs
@@ -38,14 +39,14 @@ object TestUtils {
   }
 
   def createWriter(
-      conf: Configuration,
+      props: Properties,
       schema: TypeDescription,
       testFile: String
   ): Writer = {
     OrcFile.createWriter(
       new fs.Path(testFile),
       OrcFile
-        .writerOptions(conf)
+        .writerOptions(props, new Configuration())
         .setSchema(schema)
     )
   }
