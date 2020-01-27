@@ -15,6 +15,7 @@ import uk.co.realb.flink.orc.encoder.EncoderOrcWriters;
 
 import java.io.File;
 import java.nio.file.Paths;
+import java.util.Properties;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -29,9 +30,10 @@ public class OrcStreamingFileSinkTest {
     public void setupTestHarness() throws Exception {
         TestTupleEncoder encoder = new TestTupleEncoder();
         TypeDescription schema = TypeDescription.fromString("struct<x:int,y:string,z:string>");
-        Configuration conf = new Configuration();
-        conf.set("orc.compress", "SNAPPY");
-        conf.set("orc.bloom.filter.columns", "x");
+        Properties conf = new Properties();
+        conf.setProperty("orc.compress", "SNAPPY");
+        conf.setProperty("orc.bloom.filter.columns", "x");
+        
         File out = folder.getRoot();
         OrcBulkWriterFactory<Tuple3<Integer, String, String>> writer = EncoderOrcWriters.withCustomEncoder(encoder, schema, conf);
         StreamingFileSink<Tuple3<Integer, String, String>> sink = StreamingFileSink

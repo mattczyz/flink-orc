@@ -6,7 +6,9 @@ import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
 import uk.co.realb.flink.orc.encoder.OrcRowEncoder;
 
-public class TestTupleEncoder extends OrcRowEncoder<Tuple3<Integer, String, String>> {
+import java.io.Serializable;
+
+public class TestTupleEncoder extends OrcRowEncoder<Tuple3<Integer, String, String>> implements Serializable {
     @Override
     public void encodeAndAdd(Tuple3<Integer, String, String> datum, VectorizedRowBatch batch) {
         int row = nextIndex(batch);
