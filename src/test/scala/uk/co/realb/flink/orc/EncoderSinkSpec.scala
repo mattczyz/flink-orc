@@ -13,30 +13,31 @@ import org.apache.flink.streaming.api.functions.sink.filesystem.{
 import org.apache.flink.streaming.api.operators.StreamSink
 import org.apache.flink.streaming.util.OneInputStreamOperatorTestHarness
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.hive.ql.exec.vector.{
-  BytesColumnVector,
-  LongColumnVector,
-  VectorizedRowBatch
-}
-import org.apache.orc.{RecordReader, TypeDescription, Writer}
-import org.junit.runner.RunWith
-import org.scalatest._
+import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch
+import org.apache.orc.{TypeDescription, Writer}
+import org.junit.rules.TemporaryFolder
+import org.junit.{Rule, Test}
 import org.scalatest.matchers.should.Matchers
-import org.scalatestplus.junit.JUnitRunner
-import uk.co.realb.flink.orc.TestUtils.flush
-import uk.co.realb.flink.orc.encoder.{EncoderOrcWriters, OrcRowEncoder}
+import uk.co.realb.flink.orc.TestUtils._
+import uk.co.realb.flink.orc.encoder.OrcRowEncoder
 
-import scala.collection.mutable.ArrayBuffer
-import scala.reflect.io.File
+import scala.annotation.meta.getter
 import scala.util.hashing.MurmurHash3
 
-@RunWith(classOf[JUnitRunner])
-class OrcStreamingFileSinkSpec extends FlatSpec with Matchers {
+class EncoderSinkSpec extends Matchers {
+
+  @(Rule @getter)
+  val streamingOutput = new TemporaryFolder
+  @(Rule @getter)
+  val orcOutput = new TemporaryFolder
+
   private val schemaString = """struct<x:int,y:string,z:string>"""
 
   private val conf = new Properties
   conf.setProperty("orc.compress", "SNAPPY")
   conf.setProperty("orc.bloom.filter.columns", "x")
+  conf.setProperty("orc.stripe.size", "4194304")
+  conf.setProperty("orc.create.index", "true")
 
   private val schema = TypeDescription.fromString(schemaString)
   private val encoder = new TestEncoder()
@@ -52,17 +53,16 @@ class OrcStreamingFileSinkSpec extends FlatSpec with Matchers {
         SimpleVersionedStringSerializer.INSTANCE
     }
 
-  "Orc StreamingFileSink and Orc Writer output files byte content" should "be identical" in {
-    val streamingTempDir = TestUtils.tempDirectory("streaming-test-files")
-    val orcTempDir = TestUtils.tempDirectory("orc-test-files")
-
-    val testData = (0 to 10000)
+  @Test def testCompareOrcWriterOutputWithFlink() {
+    val streamingTempDir = streamingOutput.getRoot.getAbsolutePath
+    val orcTempDir = orcOutput.getRoot.getAbsolutePath
+    val testData = (0 to 1000000)
       .map(i => (i, "testText", MurmurHash3.stringHash(i.toString).toString))
 
     val sink = StreamingFileSink
       .forBulkFormat(
-        new Path(streamingTempDir.getAbsolutePath),
-        EncoderOrcWriters
+        new Path(streamingTempDir),
+        OrcWriters
           .withCustomEncoder[(Int, String, String)](encoder, schema, conf)
       )
       .withBucketAssigner(bucketAssigner)
@@ -82,29 +82,35 @@ class OrcStreamingFileSinkSpec extends FlatSpec with Matchers {
     testHarness.notifyOfCompletedCheckpoint(10002L)
 
     val testWriterFile =
-      Paths.get(orcTempDir.getAbsolutePath, "test.orc").toAbsolutePath.toString
-    val writer = TestUtils.createWriter(conf, schema, testWriterFile)
+      Paths.get(orcTempDir, "test.orc").toAbsolutePath.toString
+
+    val writer = createWriter(conf, schema, testWriterFile)
     val batch: VectorizedRowBatch = schema.createRowBatch()
 
     testData.foreach(d => writeTestRow(d, batch, writer, encoder))
     flush(batch, writer)
+
     writer.close()
 
     val testStreamingFile = Paths
-      .get(streamingTempDir.getAbsolutePath, "testText", "part-3-0")
+      .get(streamingTempDir, "testText", "part-3-0")
       .toAbsolutePath
       .toString
 
-    File(testWriterFile).toByteArray() should be(
-      File(testStreamingFile).toByteArray()
+    fileHash(testWriterFile) should be(
+      fileHash(testStreamingFile)
     )
 
-    TestUtils.cleanupDirectory(streamingTempDir)
-    TestUtils.cleanupDirectory(orcTempDir)
+    val reader = TestUtils.createReader(new Configuration(), testStreamingFile)
+
+    reader.getFileTail.getPostscript.getCompression.toString should be(
+      "SNAPPY"
+    )
+    reader.getFileTail.getFooter.getStripesList.size() should be(4)
   }
 
-  "Orc StreamingFileSink" should "produce into multiple buckets" in {
-    val tempDir = TestUtils.tempDirectory("streaming-test-files")
+  @Test def testSinkIntoMultipleBuckets() {
+    val tempDir = streamingOutput.getRoot.getAbsolutePath
     val testData = (0 to 10000)
       .map(i =>
         (i, "testText" + i % 3, MurmurHash3.stringHash(i.toString).toString)
@@ -112,8 +118,8 @@ class OrcStreamingFileSinkSpec extends FlatSpec with Matchers {
 
     val sink = StreamingFileSink
       .forBulkFormat(
-        new Path(tempDir.getAbsolutePath),
-        EncoderOrcWriters
+        new Path(tempDir),
+        OrcWriters
           .withCustomEncoder[(Int, String, String)](encoder, schema, conf)
       )
       .withBucketAssigner(bucketAssigner)
@@ -132,58 +138,16 @@ class OrcStreamingFileSinkSpec extends FlatSpec with Matchers {
     testHarness.snapshot(1L, 10001L)
     testHarness.notifyOfCompletedCheckpoint(10002L)
 
-    val testFile = (x: Seq[String]) =>
-      Paths
-        .get(tempDir.getAbsolutePath, x: _*)
-        .toAbsolutePath
-        .toString
-
-    val batch = schema.createRowBatch
-
-    val result = ArrayBuffer[(Int, String, String)]()
-
-    val reader = (x: RecordReader) =>
-      while (x.nextBatch(batch)) {
-        (0 until batch.size)
-          .map(i => {
-            val x = batch.cols(0).asInstanceOf[LongColumnVector].vector.toSeq
-            val y = batch
-              .cols(1)
-              .asInstanceOf[BytesColumnVector]
-            val z = batch
-              .cols(2)
-              .asInstanceOf[BytesColumnVector]
-            result.append((x(i).toInt, y.toString(i), z.toString(i)))
-
-          })
-      }
-
-    reader(
-      TestUtils
-        .createReader(
-          new Configuration(),
-          testFile(Seq("testText0", "part-0-0"))
-        )
-        .rows()
+    val result = testTupleReader(
+      schema,
+      Seq(
+        testFile(Seq("testText0", "part-0-0"), tempDir),
+        testFile(Seq("testText1", "part-0-1"), tempDir),
+        testFile(Seq("testText2", "part-0-2"), tempDir)
+      )
     )
-    reader(
-      TestUtils
-        .createReader(
-          new Configuration(),
-          testFile(Seq("testText1", "part-0-1"))
-        )
-        .rows()
-    )
-    reader(
-      TestUtils
-        .createReader(
-          new Configuration(),
-          testFile(Seq("testText2", "part-0-2"))
-        )
-        .rows()
-    )
+
     result.sortBy(_._1) should be(testData)
-    TestUtils.cleanupDirectory(tempDir)
   }
 
   private def writeTestRow(
