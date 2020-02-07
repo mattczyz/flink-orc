@@ -30,8 +30,6 @@ Helper methods:
 * nextIndex(batch) - returning the next row index as Int
 * incrementBatchSize(batch) - completing the row and incrementing internal VectorizedRowBatch counter
 
-e.g.
-
 ```
 class Encoder extends OrcRowEncoder[(Int, String, String)]() with Serializable {
   override def encodeAndAdd(
@@ -64,7 +62,6 @@ passing encoder, output schema and additional ORC configuration.
 * schema - ORC `TypeDescription`
 * props - non-default ORC configuration as `Properties`
 
-e.g.
 ```
     val props = new Properties()
     props.setProperty("orc.compress", "SNAPPY")
@@ -86,11 +83,11 @@ e.g.
 ```
 
 ### Reflection
-Sink can be configured to use reflection to build ORC types and encode records. It uses Hive ObjectInspector with Java POJO or Scala Case Class specified when instantiating the sink.
+Sink can be configured to use reflection to inspect types and encode records. It uses Hive ObjectInspector with Java POJO or Scala Case Class specified when instantiating the sink.
 
 Sink is built with `writerFactory` returned from 
 ```OrcWriters.forReflectRecord(classOf[TestData], props)``` 
-specifying incoming data class and additional ORC configuration.
+specifying incoming data type and additional ORC configuration.
 
 * `classOf[TestData]` - input data type `Class<T>` of Java POJO or Scala Case Class
 * props - non-default ORC configuration as `Properties`
@@ -110,4 +107,4 @@ e.g.
 ## Releases 
 
 * 0.3 - Reflection based Writer
-* 0.2 - Encoder based Writer
+* 0.2 - VectorizedRowBatch based Writer
