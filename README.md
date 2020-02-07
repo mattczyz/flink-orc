@@ -83,7 +83,7 @@ passing encoder, output schema and additional ORC configuration.
 ```
 
 ### Reflection
-Sink can be configured to use reflection to inspect types and encode records. It uses Hive ObjectInspector with Java POJO or Scala Case Class specified when instantiating the sink.
+Sink can be configured to use reflection to inspect types and encode records. It requires Java POJO or Scala Case Class type specified when instantiating the sink. Internally using Hive ObjectInspector.
 
 Sink is built with `writerFactory` returned from 
 ```OrcWriters.forReflectRecord(classOf[TestData], props)``` 
