@@ -94,6 +94,7 @@ specifying incoming data type and additional ORC configuration.
 
 e.g.
 ```
+    val props = new Properties()
     stream
       .addSink(StreamingFileSink
         .forBulkFormat(
