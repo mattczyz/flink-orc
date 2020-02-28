@@ -92,7 +92,6 @@ specifying incoming data type and additional ORC configuration.
 * `classOf[TestData]` - input data type `Class<T>` of Java POJO or Scala Case Class
 * props - non-default ORC configuration as `Properties`
 
-e.g.
 ```
     val props = new Properties()
     stream
@@ -105,7 +104,50 @@ e.g.
         .build())
 ```
 
+### Avro GenericRecord
+Sink can encode Avro GenericRecord directly to ORC. It requires Avro schema provided when instantiating the sink.
+
+Sink is built with `writerFactory` returned from 
+```OrcWriters.forGenericRecord[GenericRecord](avroSchemaString, props)``` 
+with schema of incoming data and additional ORC configuration.
+
+* `avroSchemaString` - Avro schema as `JSON String`
+* props - non-default ORC configuration as `Properties`
+
+```
+    val schema = """{
+                   |	"name": "record",
+                   |	"type": "record",
+                   |	"fields": [{
+                   |		"name": "x",
+                   |		"type": "int",
+                   |		"doc": ""
+                   |	}, {
+                   |		"name": "y",
+                   |		"type": "string",
+                   |		"doc": ""
+                   |	}, {
+                   |		"name": "z",
+                   |		"type": "string",
+                   |		"doc": ""
+                   |	}]
+                   |}""".stripMargin
+
+    val props = new Properties()
+    stream
+      .addSink(StreamingFileSink
+        .forBulkFormat(
+          new Path(out),
+          OrcWriters.forGenericRecord[GenericRecord](schema, props)
+        )
+        .withBucketAssigner(new BucketAssigner)
+        .build())
+```
+
 ## Releases 
 
+* 0.4 
+  * Avro GenericRecord Writer
+  * Removed deprecated EncoderOrcWriters class
 * 0.3 - Reflection based Writer
 * 0.2 - VectorizedRowBatch based Writer
