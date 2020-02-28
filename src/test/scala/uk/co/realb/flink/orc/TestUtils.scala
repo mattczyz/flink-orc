@@ -4,6 +4,7 @@ import java.nio.file.Paths
 import java.security.MessageDigest
 import java.util.Properties
 
+import org.apache.avro.Schema
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs
 import org.apache.hadoop.hive.ql.exec.vector.{
@@ -12,7 +13,11 @@ import org.apache.hadoop.hive.ql.exec.vector.{
   VectorizedRowBatch
 }
 import org.apache.hadoop.hive.ql.io.orc
-import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory
+import org.apache.hadoop.hive.serde2.avro.AvroObjectInspectorGenerator
+import org.apache.hadoop.hive.serde2.objectinspector.{
+  ObjectInspector,
+  ObjectInspectorFactory
+}
 import org.apache.orc.{OrcFile, Reader, TypeDescription, Writer}
 
 import scala.collection.mutable.ArrayBuffer
@@ -50,6 +55,25 @@ object TestUtils {
       ObjectInspectorFactory.ObjectInspectorOptions.JAVA
     )
 
+    orcHiveWriter(props, testFile, inspector)
+  }
+
+  def createGenericRecordWriter(
+      avroSchema: Schema,
+      props: Properties,
+      testFile: String
+  ): orc.Writer = {
+
+    val inspector = new AvroObjectInspectorGenerator(avroSchema).getObjectInspector
+
+    orcHiveWriter(props, testFile, inspector)
+  }
+
+  private def orcHiveWriter(
+      props: Properties,
+      testFile: String,
+      inspector: ObjectInspector
+  ) = {
     val writer: orc.Writer =
       org.apache.hadoop.hive.ql.io.orc.OrcFile.createWriter(
         new fs.Path(testFile),
